@@ -1,0 +1,406 @@
+/**
+ * AI Music Recommender — Frontend Logic
+ * ======================================
+ * - Animated particle background (canvas)
+ * - Interactive preference selection with ripple effects
+ * - Energy slider with dynamic labels
+ * - Fetch API calls to backend
+ * - Results rendering with staggered animations
+ * - Spotify preview audio player
+ * - Match percentage counter animation
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    // ===== PARTICLE BACKGROUND =====
+    const canvas = document.getElementById("particle-canvas");
+    const ctx = canvas.getContext("2d");
+    let particles = [];
+    let animationId;
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+
+    function createParticles() {
+        particles = [];
+        const count = Math.floor((canvas.width * canvas.height) / 15000);
+        for (let i = 0; i < count; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: Math.random() * 2 + 0.5,
+                dx: (Math.random() - 0.5) * 0.4,
+                dy: (Math.random() - 0.5) * 0.4,
+                opacity: Math.random() * 0.4 + 0.1,
+            });
+        }
+    }
+
+    function drawParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        particles.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(168, 85, 247, ${p.opacity})`;
+            ctx.fill();
+
+            p.x += p.dx;
+            p.y += p.dy;
+
+            // Wrap around edges
+            if (p.x < 0) p.x = canvas.width;
+            if (p.x > canvas.width) p.x = 0;
+            if (p.y < 0) p.y = canvas.height;
+            if (p.y > canvas.height) p.y = 0;
+        });
+
+        // Draw connections between nearby particles
+        for (let i = 0; i < particles.length; i++) {
+            for (let j = i + 1; j < particles.length; j++) {
+                const dist = Math.hypot(particles[i].x - particles[j].x, particles[i].y - particles[j].y);
+                if (dist < 120) {
+                    ctx.beginPath();
+                    ctx.strokeStyle = `rgba(168, 85, 247, ${0.06 * (1 - dist / 120)})`;
+                    ctx.lineWidth = 0.5;
+                    ctx.moveTo(particles[i].x, particles[i].y);
+                    ctx.lineTo(particles[j].x, particles[j].y);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        animationId = requestAnimationFrame(drawParticles);
+    }
+
+    resizeCanvas();
+    createParticles();
+    drawParticles();
+    window.addEventListener("resize", () => { resizeCanvas(); createParticles(); });
+
+
+    // ===== STATE =====
+    const selections = {
+        genre: null,
+        mood: null,
+        energy: 5
+    };
+
+    const submitBtn = document.getElementById("submit-btn");
+    const formSection = document.getElementById("form-section");
+    const resultsSection = document.getElementById("results-section");
+    const recommendationsList = document.getElementById("recommendations-list");
+    const resetBtn = document.getElementById("reset-btn");
+    const energySlider = document.getElementById("energy-slider");
+    const energyValue = document.getElementById("energy-value");
+    const energyLabel = document.getElementById("energy-label");
+
+    // Currently playing audio
+    let currentAudio = null;
+    let currentPlayBtn = null;
+
+
+    // ===== ENERGY SLIDER =====
+    const energyLabels = {
+        1: "Very Chill", 2: "Mellow", 3: "Easy Going", 4: "Calm",
+        5: "Moderate", 6: "Upbeat", 7: "Lively", 8: "High Energy",
+        9: "Intense", 10: "Maximum"
+    };
+
+    energySlider.addEventListener("input", (e) => {
+        const val = parseInt(e.target.value);
+        selections.energy = val;
+        energyValue.textContent = val;
+        energyLabel.textContent = energyLabels[val] || "Moderate";
+
+        // Update slider gradient fill
+        const pct = ((val - 1) / 9) * 100;
+        energySlider.style.background = `linear-gradient(to right, #a855f7 0%, #3b82f6 ${pct}%, rgba(255,255,255,0.08) ${pct}%)`;
+    });
+
+    // Initialize slider appearance
+    energySlider.dispatchEvent(new Event("input"));
+
+
+    // ===== OPTION CARD SELECTION WITH RIPPLE =====
+    document.querySelectorAll(".option-card").forEach(card => {
+        card.addEventListener("click", function(e) {
+            const group = this.dataset.group;
+            const value = this.dataset.value;
+
+            // Deselect siblings
+            document.querySelectorAll(`.option-card[data-group="${group}"]`).forEach(c => c.classList.remove("selected"));
+
+            // Select this one
+            this.classList.add("selected");
+            selections[group] = value;
+
+            // Ripple effect
+            const ripple = document.createElement("span");
+            ripple.classList.add("ripple");
+            const rect = this.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height);
+            ripple.style.width = ripple.style.height = size + "px";
+            ripple.style.left = (e.clientX - rect.left - size / 2) + "px";
+            ripple.style.top = (e.clientY - rect.top - size / 2) + "px";
+            this.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 600);
+
+            // Check if ready to submit
+            updateSubmitButton();
+        });
+    });
+
+    function updateSubmitButton() {
+        if (selections.genre && selections.mood) {
+            submitBtn.disabled = false;
+            submitBtn.querySelector(".btn-text").textContent = "Find My AI Matches ✨";
+        }
+    }
+
+
+    // ===== FORM SUBMISSION =====
+    submitBtn.addEventListener("click", async () => {
+        if (!selections.genre || !selections.mood) return;
+
+        // Show loading state
+        submitBtn.classList.add("loading");
+        submitBtn.disabled = true;
+
+        try {
+            const response = await fetch("/recommend", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(selections)
+            });
+
+            const data = await response.json();
+            renderResults(data);
+        } catch (error) {
+            console.error("Recommendation error:", error);
+            submitBtn.classList.remove("loading");
+            submitBtn.disabled = false;
+            submitBtn.querySelector(".btn-text").textContent = "Something went wrong — Try Again";
+        }
+    });
+
+
+    // ===== RENDER RESULTS =====
+    function renderResults(data) {
+        // Stop any playing audio
+        stopAudio();
+
+        const songs = data.recommendations;
+        recommendationsList.innerHTML = "";
+
+        // AI summary
+        const aiSummary = document.getElementById("ai-summary");
+        aiSummary.textContent = `Analyzed ${data.total_songs_analyzed} songs using ${data.ai_method}`;
+
+        // AI meta tags
+        const aiMeta = document.getElementById("ai-meta");
+        aiMeta.innerHTML = `
+            <span class="ai-meta-tag">🧠 ${data.ai_method}</span>
+            <span class="ai-meta-tag">📊 ${data.features_used.length} Features</span>
+            <span class="ai-meta-tag">🎵 ${data.total_songs_analyzed} Songs</span>
+            <span class="ai-meta-tag spotify-badge ${data.spotify_connected ? 'connected' : 'disconnected'}">
+                ${data.spotify_connected ? '🟢 Spotify Connected' : '⚪ Spotify Offline'}
+            </span>
+        `;
+
+        if (songs.length === 0) {
+            recommendationsList.innerHTML = `
+                <div class="section-card" style="text-align:center; padding: 40px;">
+                    <p style="font-size: 48px; margin-bottom: 16px;">🤷</p>
+                    <p style="color: var(--text-secondary);">No matches found. Try different preferences!</p>
+                </div>
+            `;
+        } else {
+            songs.forEach((song, index) => {
+                const card = document.createElement("div");
+                card.className = "song-card";
+                card.style.animationDelay = `${index * 0.12}s`;
+
+                const rankLabels = ["#1 Best Match", "#2 Great Match", "#3 Strong Match", "#4 Good Match", "#5 Match"];
+
+                // Feature bars HTML
+                let featureBarsHtml = "";
+                const featureNames = { energy: "Energy", danceability: "Dance", valence: "Happiness", acousticness: "Acoustic", tempo_norm: "Tempo" };
+                for (const [key, val] of Object.entries(song.features)) {
+                    featureBarsHtml += `
+                        <div class="feature-item">
+                            <span class="feature-name">${featureNames[key] || key}</span>
+                            <div class="feature-bar-track">
+                                <div class="feature-bar-fill ${key}" data-width="${val * 100}"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Action buttons
+                let actionsHtml = "";
+                if (song.spotify_url) {
+                    actionsHtml += `<a href="${song.spotify_url}" target="_blank" rel="noopener" class="song-action-btn btn-spotify">▶ Open in Spotify</a>`;
+                }
+                if (song.preview_url) {
+                    actionsHtml += `<button class="song-action-btn btn-preview" data-preview="${song.preview_url}" onclick="togglePreview(this)">♫ Preview</button>`;
+                }
+
+                card.innerHTML = `
+                    <div class="song-card-inner">
+                        <div class="song-album-art">
+                            ${song.album_art 
+                                ? `<img src="${song.album_art}" alt="${song.title} album art" loading="lazy">`
+                                : `<span class="placeholder-icon">🎵</span>`
+                            }
+                        </div>
+                        <div class="song-info">
+                            <div class="song-rank">${rankLabels[index] || '#' + (index + 1)}</div>
+                            <div class="song-title">${song.title}</div>
+                            <div class="song-artist">by ${song.artist}</div>
+                            <span class="song-genre-tag">${song.genre}</span>
+                            <div class="match-bar-container">
+                                <div class="match-bar-label">
+                                    <span class="label">AI Similarity</span>
+                                    <span class="percentage" data-target="${song.similarity_score}">0%</span>
+                                </div>
+                                <div class="match-bar">
+                                    <div class="match-bar-fill" data-width="${song.similarity_score}"></div>
+                                </div>
+                            </div>
+                            <div class="song-actions">${actionsHtml}</div>
+                        </div>
+                    </div>
+                    <div class="feature-breakdown">
+                        <div class="feature-breakdown-title">Audio Feature Analysis</div>
+                        <div class="feature-bars">${featureBarsHtml}</div>
+                    </div>
+                `;
+
+                recommendationsList.appendChild(card);
+            });
+        }
+
+        // Switch views
+        formSection.classList.add("hidden");
+        resultsSection.classList.add("visible");
+        submitBtn.classList.remove("loading");
+
+        // Scroll to top
+        window.scrollTo({ top: 0, behavior: "smooth" });
+
+        // Trigger animations after a brief delay
+        setTimeout(animateBars, 300);
+    }
+
+
+    // ===== ANIMATE BARS & COUNTERS =====
+    function animateBars() {
+        // Animate match bars
+        document.querySelectorAll(".match-bar-fill").forEach(bar => {
+            const width = bar.dataset.width;
+            bar.style.width = width + "%";
+        });
+
+        // Animate feature bars
+        document.querySelectorAll(".feature-bar-fill").forEach(bar => {
+            const width = bar.dataset.width;
+            bar.style.width = width + "%";
+        });
+
+        // Animate percentage counters
+        document.querySelectorAll(".match-bar-label .percentage").forEach(el => {
+            const target = parseFloat(el.dataset.target);
+            animateCounter(el, 0, target, 1200);
+        });
+    }
+
+    function animateCounter(el, start, end, duration) {
+        const startTime = performance.now();
+        function update(currentTime) {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            // Ease out cubic
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const current = start + (end - start) * eased;
+            el.textContent = current.toFixed(1) + "%";
+            if (progress < 1) requestAnimationFrame(update);
+        }
+        requestAnimationFrame(update);
+    }
+
+
+    // ===== AUDIO PREVIEW =====
+    window.togglePreview = function(btn) {
+        const url = btn.dataset.preview;
+
+        // If same button is playing, stop it
+        if (currentPlayBtn === btn && currentAudio && !currentAudio.paused) {
+            stopAudio();
+            return;
+        }
+
+        // Stop any currently playing
+        stopAudio();
+
+        // Play new
+        currentAudio = new Audio(url);
+        currentPlayBtn = btn;
+        btn.textContent = "⏸ Playing...";
+        btn.classList.add("playing");
+
+        currentAudio.play().catch(err => {
+            console.error("Playback error:", err);
+            btn.textContent = "♫ Preview";
+            btn.classList.remove("playing");
+        });
+
+        currentAudio.addEventListener("ended", () => {
+            btn.textContent = "♫ Preview";
+            btn.classList.remove("playing");
+            currentAudio = null;
+            currentPlayBtn = null;
+        });
+    }
+
+    function stopAudio() {
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.currentTime = 0;
+            currentAudio = null;
+        }
+        if (currentPlayBtn) {
+            currentPlayBtn.textContent = "♫ Preview";
+            currentPlayBtn.classList.remove("playing");
+            currentPlayBtn = null;
+        }
+    }
+
+
+    // ===== RESET =====
+    resetBtn.addEventListener("click", () => {
+        stopAudio();
+
+        // Reset selections
+        selections.genre = null;
+        selections.mood = null;
+        selections.energy = 5;
+
+        // Reset UI
+        document.querySelectorAll(".option-card").forEach(c => c.classList.remove("selected"));
+        energySlider.value = 5;
+        energySlider.dispatchEvent(new Event("input"));
+        submitBtn.disabled = true;
+        submitBtn.querySelector(".btn-text").textContent = "Select a genre and mood to begin";
+
+        // Switch views
+        resultsSection.classList.remove("visible");
+        formSection.classList.remove("hidden");
+        recommendationsList.innerHTML = "";
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+});

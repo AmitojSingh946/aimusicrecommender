@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: ai-music-recommender
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SPOTIPY_CLIENT_ID
+        sync: false
+      - key: SPOTIPY_CLIENT_SECRET
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.0

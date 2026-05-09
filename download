@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Music Recommender — Powered by Cosine Similarity</title>
+    <meta name="description" content="Get AI-powered music recommendations based on your mood, genre preference, and energy level. Built with scikit-learn cosine similarity and Spotify integration.">
+
+    <!-- Google Font: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <!-- Animated Particle Background -->
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="app-wrapper">
+
+        <!-- ===== HERO ===== -->
+        <header class="hero">
+            <span class="hero-icon">🎧</span>
+            <h1>AI Music Recommender</h1>
+            <p class="tagline">Tell us your vibe and our AI engine will find your perfect tracks using machine learning and Spotify's catalog.</p>
+
+        </header>
+
+        <!-- ===== PREFERENCE FORM ===== -->
+        <div class="form-section" id="form-section">
+
+            <!-- Genre Selection -->
+            <div class="section-card" id="genre-section">
+                <div class="section-title">
+                    <span class="step-number">1</span>
+                    <h3>Pick your Genre</h3>
+                </div>
+                <div class="options-grid" id="genre-grid">
+                    <div class="option-card" data-group="genre" data-value="Pop">
+                        <span class="card-emoji">🎤</span>
+                        <span class="card-label">Pop</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="Rock">
+                        <span class="card-emoji">🎸</span>
+                        <span class="card-label">Rock</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="Hip-Hop">
+                        <span class="card-emoji">🎙️</span>
+                        <span class="card-label">Hip-Hop</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="Electronic">
+                        <span class="card-emoji">🎹</span>
+                        <span class="card-label">Electronic</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="Classical">
+                        <span class="card-emoji">🎻</span>
+                        <span class="card-label">Classical</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="R&B">
+                        <span class="card-emoji">💜</span>
+                        <span class="card-label">R&B</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="Jazz">
+                        <span class="card-emoji">🎷</span>
+                        <span class="card-label">Jazz</span>
+                    </div>
+                    <div class="option-card" data-group="genre" data-value="Indie">
+                        <span class="card-emoji">🌿</span>
+                        <span class="card-label">Indie</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mood Selection -->
+            <div class="section-card" id="mood-section">
+                <div class="section-title">
+                    <span class="step-number">2</span>
+                    <h3>How are you feeling?</h3>
+                </div>
+                <div class="options-grid" id="mood-grid">
+                    <div class="option-card" data-group="mood" data-value="Happy">
+                        <span class="card-emoji">😊</span>
+                        <span class="card-label">Happy</span>
+                    </div>
+                    <div class="option-card" data-group="mood" data-value="Sad">
+                        <span class="card-emoji">😢</span>
+                        <span class="card-label">Sad</span>
+                    </div>
+                    <div class="option-card" data-group="mood" data-value="Energetic">
+                        <span class="card-emoji">⚡</span>
+                        <span class="card-label">Energetic</span>
+                    </div>
+                    <div class="option-card" data-group="mood" data-value="Relaxed">
+                        <span class="card-emoji">☕</span>
+                        <span class="card-label">Relaxed</span>
+                    </div>
+                    <div class="option-card" data-group="mood" data-value="Romantic">
+                        <span class="card-emoji">💕</span>
+                        <span class="card-label">Romantic</span>
+                    </div>
+                    <div class="option-card" data-group="mood" data-value="Angry">
+                        <span class="card-emoji">🔥</span>
+                        <span class="card-label">Angry</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Energy Slider -->
+            <div class="section-card" id="energy-section">
+                <div class="section-title">
+                    <span class="step-number">3</span>
+                    <h3>Set your Energy Level</h3>
+                </div>
+                <div class="slider-wrapper">
+                    <div class="slider-value-display">
+                        <div class="value" id="energy-value">5</div>
+                        <div class="value-label" id="energy-label">Moderate</div>
+                    </div>
+                    <input type="range" id="energy-slider" min="1" max="10" value="5">
+                    <div class="slider-labels">
+                        <span>🧘 Chill</span>
+                        <span>🔥 Maximum</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Submit -->
+            <button type="button" class="submit-btn" id="submit-btn" disabled>
+                <span class="btn-text">Select a genre and mood to begin</span>
+                <span class="btn-loader"></span>
+            </button>
+        </div>
+
+        <!-- ===== RESULTS SECTION ===== -->
+        <div class="results-section" id="results-section">
+            <div class="results-header">
+                <h2>✨ Your AI Matches</h2>
+                <p class="ai-summary" id="ai-summary"></p>
+                <div class="ai-meta" id="ai-meta"></div>
+            </div>
+
+            <!-- Song Cards Container -->
+            <div id="recommendations-list"></div>
+
+            <!-- How It Works -->
+            <div class="section-card how-it-works" id="how-it-works">
+                <h3>🧠 How the AI Works</h3>
+                <div class="steps-flow">
+                    <div class="flow-step">
+                        <span class="step-icon">🎯</span>
+                        <span class="step-text">Your Preferences</span>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">
+                        <span class="step-icon">📊</span>
+                        <span class="step-text">Feature Vector</span>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">
+                        <span class="step-icon">🤖</span>
+                        <span class="step-text">Cosine Similarity</span>
+                    </div>
+                    <span class="flow-arrow">→</span>
+                    <div class="flow-step">
+                        <span class="step-icon">🎵</span>
+                        <span class="step-text">Top Matches</span>
+                    </div>
+                </div>
+                <p class="algo-note">
+                    Each song is a vector of 5 audio features: <code>energy</code>, <code>danceability</code>, <code>valence</code>, <code>acousticness</code>, <code>tempo</code>. 
+                    Your preferences create an "ideal" vector, and <code>sklearn.cosine_similarity</code> finds the closest songs in this 5-dimensional space.
+                </p>
+            </div>
+
+            <button class="reset-btn" id="reset-btn">↻ Try Different Preferences</button>
+        </div>
+
+    </div>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
